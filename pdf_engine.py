@@ -29,7 +29,7 @@ class PdfEngine:
 
     def load_state_bytes(self, data, mark_dirty=True):
         if data is None:
-            return False, "臾몄꽌媛 ?대젮 ?덉? ?딆뒿?덈떎."
+            return False, "유효하지 않은 상태 데이터입니다."
         try:
             if self.doc is not None:
                 self.doc.close()
@@ -75,9 +75,9 @@ class PdfEngine:
 
     def rotate_page_by(self, index, delta):
         if not self.doc:
-            return False, "??? ?? ?? ????."
+            return False, "문서가 열려 있지 않습니다."
         if index < 0 or index >= len(self.doc):
-            return False, "???? ?? ??????."
+            return False, "유효하지 않은 페이지입니다."
         try:
             page = self.doc.load_page(index)
             page.set_rotation((page.rotation + delta) % 360)
@@ -118,6 +118,25 @@ class PdfEngine:
         self.is_dirty = True
         return True, ""
 
+    def keep_pages(self, indices):
+        if not self.doc:
+            return False, "문서가 열려 있지 않습니다."
+        if not indices:
+            return False, "선택된 페이지가 없습니다."
+        unique = sorted({i for i in indices if 0 <= i < len(self.doc)})
+        if not unique:
+            return False, "선택된 페이지가 없습니다."
+        try:
+            new_doc = fitz.open()
+            for idx in unique:
+                new_doc.insert_pdf(self.doc, from_page=idx, to_page=idx)
+            self.doc.close()
+            self.doc = new_doc
+        except Exception as exc:
+            return False, str(exc)
+        self.is_dirty = True
+        return True, ""
+
     def insert_pdf(self, path):
         if not self.doc:
             return False, "문서가 열려 있지 않습니다."
@@ -130,4 +149,45 @@ class PdfEngine:
         except Exception as exc:
             return False, str(exc)
         self.is_dirty = True
+        return True, ""
+
+    def insert_pdf_at(self, path, index):
+        if not self.doc:
+            return False, "문서가 열려 있지 않습니다."
+        if index < 0:
+            index = 0
+        if index > len(self.doc):
+            index = len(self.doc)
+        try:
+            other_doc = fitz.open(path)
+            try:
+                new_doc = fitz.open()
+                if index > 0:
+                    new_doc.insert_pdf(self.doc, from_page=0, to_page=index - 1)
+                new_doc.insert_pdf(other_doc)
+                if index < len(self.doc):
+                    new_doc.insert_pdf(self.doc, from_page=index, to_page=len(self.doc) - 1)
+                self.doc.close()
+                self.doc = new_doc
+            finally:
+                other_doc.close()
+        except Exception as exc:
+            return False, str(exc)
+        self.is_dirty = True
+        return True, ""
+
+    def export_pages(self, indices, path):
+        if not self.doc:
+            return False, "문서가 열려 있지 않습니다."
+        if not indices:
+            return False, "선택된 페이지가 없습니다."
+        try:
+            new_doc = fitz.open()
+            for idx in indices:
+                if 0 <= idx < len(self.doc):
+                    new_doc.insert_pdf(self.doc, from_page=idx, to_page=idx)
+            new_doc.save(path)
+            new_doc.close()
+        except Exception as exc:
+            return False, str(exc)
         return True, ""
